@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/deploymenttheory/weaveplatform-manifest/compare/v0.1.0...v0.2.0) (2026-08-10)
+
+
+### Features
+
+* domain-separated signatures via weaveplatform-api SigningMessage ([a4ccd9c](https://github.com/deploymenttheory/weaveplatform-manifest/commit/a4ccd9cd82428673f47800f4e68222ebcb09dbcf))
+
 ## 0.1.0 (2026-08-10)
 
 
