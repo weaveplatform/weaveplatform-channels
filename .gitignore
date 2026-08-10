@@ -50,3 +50,8 @@ __pycache__/
 *.so
 # goreleaser output
 dist/
+
+# lint/CI artifacts and built binary (never commit)
+*.sarif
+golangci-lint-report.sarif
+/weavemanifest
