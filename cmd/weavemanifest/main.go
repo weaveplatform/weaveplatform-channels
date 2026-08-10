@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	apimanifest "github.com/deploymenttheory/weaveplatform-api/manifest"
 )
 
 const usage = `weavemanifest — channel manifest tooling
@@ -113,7 +115,11 @@ func signFile(args []string, endorse bool) error {
 	if err != nil {
 		return err
 	}
-	sig := ed25519.Sign(priv, data)
+	context := apimanifest.ManifestContext
+	if endorse {
+		context = apimanifest.EndorseContext
+	}
+	sig := ed25519.Sign(priv, apimanifest.SigningMessage(context, data))
 	out := args[1] + ".sig"
 	if err := writeJSON(out, 0o644, signatureFile{
 		Schema: 1, KeyID: keyID, Signature: base64.StdEncoding.EncodeToString(sig),
@@ -143,7 +149,7 @@ func verify(args []string) error {
 	if endorsement != "root" {
 		return fmt.Errorf("signing key endorsed by %q, not root", endorsement)
 	}
-	if !ed25519.Verify(rootRaw, signingBytes, endorsementSig) {
+	if !ed25519.Verify(rootRaw, apimanifest.SigningMessage(apimanifest.EndorseContext, signingBytes), endorsementSig) {
 		return fmt.Errorf("signing key endorsement invalid")
 	}
 	signingRaw, signingID, err := readPublic(args[1])
@@ -161,7 +167,7 @@ func verify(args []string) error {
 	if sigID != signingID {
 		return fmt.Errorf("file signed by %q but signing key is %q", sigID, signingID)
 	}
-	if !ed25519.Verify(signingRaw, fileBytes, sigRaw) {
+	if !ed25519.Verify(signingRaw, apimanifest.SigningMessage(apimanifest.ManifestContext, fileBytes), sigRaw) {
 		return fmt.Errorf("file signature invalid")
 	}
 	fmt.Printf("OK: %s verifies via %s under root\n", args[2], signingID)
