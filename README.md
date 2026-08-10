@@ -4,6 +4,14 @@ Signed channel manifests for the Weave platform: the documents that map a channe
 known-good set of core and module versions and the protocol they assume. Core trusts nothing
 it fetches until it verifies against the signing chain rooted here.
 
+```mermaid
+flowchart LR
+    root["root key<br/>(offline; pub embedded in core)"] -->|endorses| signing["signing key<br/>(annual, in CI)"]
+    signing -->|signs| ch["channel manifest<br/>stable / pinned"]
+    ch -->|"fetched + chain-verified"| core["core on every device"]
+    style root fill:#8957e5,color:#fff
+```
+
 ## Layout
 
 | Path | What |
