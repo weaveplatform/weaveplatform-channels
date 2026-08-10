@@ -14,6 +14,9 @@ it fetches until it verifies against the signing chain rooted here.
 | `keys/signing-<year>.pub` (+ `.minisig`) | Annual signing keys, endorsed by the root |
 | `cmd/weavemanifest` | `generate \| sign \| verify \| promote \| pin` |
 
+[`docs/trust-chain.md`](docs/trust-chain.md) diagrams the full chain — key tiers,
+per-artifact enforcement, rolling vs pinned, and the promotion flow.
+
 ## Trust model
 
 Two-tier, minisign-style Ed25519 detached signatures: an offline root key endorses annual
