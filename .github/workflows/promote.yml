@@ -1,0 +1,119 @@
+name: promote
+
+# The receiving end of the module release pipeline. weaveplatform-agent-core's
+# reusable module-release.yml ends by dispatching `module-published` here with
+# the module id and version it just pushed to GHCR. This job assembles that
+# module's entry for the rolling channel from the published sidecar manifest,
+# signs the result when a signing key is available, and opens a PR.
+#
+# Merge is the promotion act. Nothing here touches channels/pinned/: those are
+# immutable snapshots for self-hosted deployments and are never automated.
+on:
+  repository_dispatch:
+    types: [module-published]
+  workflow_dispatch:
+    inputs:
+      module:
+        description: Module id (the manifest id, e.g. sysinfo)
+        required: true
+      version:
+        description: Published version (e.g. 0.3.0)
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04-arm
+    env:
+      MODULE: ${{ github.event.client_payload.module || inputs.module }}
+      VERSION: ${{ github.event.client_payload.version || inputs.version }}
+      ORAS_REF: ghcr.io/${{ github.repository_owner }}/weaveplatform-modules/${{ github.event.client_payload.module || inputs.module }}:${{ github.event.client_payload.version || inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oras-project/setup-oras@v2
+
+      # The sidecar manifest is the module's own module.manifest.json with the
+      # per-artifact digest and size stamped in by the publish pipeline. It is
+      # the only input; nothing is typed by hand.
+      - name: Fetch the published sidecar manifest
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | oras login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          mkdir -p "$RUNNER_TEMP/pub"
+          oras pull "$ORAS_REF" -o "$RUNNER_TEMP/pub"
+          test -f "$RUNNER_TEMP/pub/module.manifest.json"
+          jq . "$RUNNER_TEMP/pub/module.manifest.json"
+
+      # channels/stable.json gains or replaces the module's entry; sequence is
+      # the anti-rollback counter core persists, so it only ever goes up.
+      #
+      # `url` is recorded as the OCI reference the artifact was pushed under.
+      # Core fetches artifacts over HTTP today, so serving them — a public
+      # mirror of the OCI store, or attaching binaries to releases — is a
+      # decision still open; until it is made, a merged promotion is a signed
+      # statement of digests, not yet a download.
+      - name: Update the rolling channel
+        run: |
+          set -eu
+          SIDE="$RUNNER_TEMP/pub/module.manifest.json"
+          STABLE=channels/stable.json
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          if [ ! -f "$STABLE" ]; then
+            jq -n --arg now "$NOW" '{schema:1, channel:"stable", generated_at:$now, sequence:0,
+              protocol:{min:1,max:1}, core:{version:"", artifacts:[]}, modules:[]}' > "$STABLE"
+          fi
+          ENTRY=$(jq --arg ref "$ORAS_REF" '{
+              id, version, protocol, privilege, session,
+              capabilities: (.capabilities // []),
+              subscribes: (.subscribes // []),
+              signing: .signing,
+              artifacts: [ (.artifacts // [])[] | {os, arch, url: ($ref + "#" + .os + "-" + .arch), digest, size} ]
+            } | with_entries(select(.value != null))' "$SIDE")
+          jq --argjson e "$ENTRY" --arg now "$NOW" '
+              .modules = ([.modules[] | select(.id != $e.id)] + [$e] | sort_by(.id))
+              | .sequence += 1
+              | .generated_at = $now' "$STABLE" > "$STABLE.new"
+          mv "$STABLE.new" "$STABLE"
+          jq . "$STABLE"
+
+      # weavemanifest ships in the agent release; this repository never
+      # carries a copy of the signing code. Signing is skipped, loudly, when
+      # no signing key is provisioned — the PR then carries an unsigned
+      # document that core will refuse, which is the correct failure.
+      - name: Sign
+        env:
+          SIGNING_KEY: ${{ secrets.CHANNEL_SIGNING_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::warning::CHANNEL_SIGNING_KEY is not set — channels/stable.json is NOT signed"
+            exit 0
+          fi
+          gh release download -R "${{ github.repository_owner }}/weaveplatform-agent-core" \
+            --pattern 'weaveplatform-agent_*_linux_arm64.tar.gz' -O "$RUNNER_TEMP/agent.tgz"
+          tar -xzf "$RUNNER_TEMP/agent.tgz" -C "$RUNNER_TEMP" weavemanifest
+          printf '%s' "$SIGNING_KEY" > "$RUNNER_TEMP/signing.key"
+          "$RUNNER_TEMP/weavemanifest" sign "$RUNNER_TEMP/signing.key" channels/stable.json
+          rm -f "$RUNNER_TEMP/signing.key"
+
+      - name: Open the promotion PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          BRANCH="promote/${MODULE}-${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add channels/stable.json channels/stable.json.sig 2>/dev/null || git add channels/stable.json
+          git commit -m "promote(${MODULE}): ${VERSION} to stable"
+          git push -u origin "$BRANCH"
+          gh pr create --title "promote(${MODULE}): ${VERSION} to stable" \
+            --body "Assembled from the published sidecar at \`${ORAS_REF}\`. Merging is the promotion act."

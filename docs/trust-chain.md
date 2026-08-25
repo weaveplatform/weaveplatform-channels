@@ -20,7 +20,7 @@ flowchart TD
 
 Everything is a detached Ed25519 signature in a small JSON envelope beside the file
 (`<name>.sig`). Verification is ~200 lines in core
-([`internal/manifestverify`](https://github.com/deploymenttheory/weaveplatform-agent/tree/main/internal/manifestverify)),
+([`internal/manifestverify`](https://github.com/deploymenttheory/weaveplatform-agent-core/tree/main/internal/manifestverify)),
 deliberately not in the SDK: a CVE is a core patch, not a rebuild of every module. An
 air-gapped self-hosted deployment verifies with nothing but the root key already baked into
 its core binary — no Fulcio, no Rekor, no CA.
@@ -48,6 +48,7 @@ weavemanifest sign <signing.key> <file>         # sign a manifest
 weavemanifest verify <root.pub> <signing.pub> <file>  # verify the full chain
 ```
 
+`weavemanifest` ships with the agent release; this repository carries no copy of it.
 The root private key never touches CI — it exists to endorse each year's signing key and
 goes back in the drawer. Signing keys live in CI secrets and are rotated by generating a new
 one and endorsing it; nothing deployed changes, because devices trust the root, not the
@@ -55,8 +56,9 @@ signing key.
 
 ## Promotion
 
-When a module publishes (see the
-[modules release pipeline](https://github.com/deploymenttheory/weaveplatform-agent-modules/blob/main/docs/release-pipeline.md)),
-its workflow sends a `repository_dispatch` here with the module id and version. The
-promotion updates `channels/stable.json` with the new distribution subset and re-signs —
+When a module publishes (through the platform repository's reusable
+[`module-release.yml`](https://github.com/deploymenttheory/weaveplatform-agent-core/blob/main/.github/workflows/module-release.yml)),
+the pipeline sends a `repository_dispatch` here with the module id and version.
+[`promote.yml`](../.github/workflows/promote.yml) pulls the published sidecar, updates
+`channels/stable.json` with the new distribution subset, re-signs, and opens a PR —
 merge is the promotion act. Pinned channels are never touched by automation.
