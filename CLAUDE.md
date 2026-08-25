@@ -1,6 +1,7 @@
-# weaveplatform-manifest — engineering conventions
+# weaveplatform-channels — engineering conventions
 
-This repo mints and verifies the trust chain. Comments about a security
+This repo holds the signed channel manifests and the keys that sign them; the
+tool that mints and verifies the chain lives in weaveplatform-agent-core. Comments about a security
 decision — what is checked, what is deliberately not, and what an attacker would
 gain from getting it wrong — are the ones worth the space here.
 
