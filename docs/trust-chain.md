@@ -62,3 +62,12 @@ the pipeline sends a `repository_dispatch` here with the module id and version.
 [`promote.yml`](../.github/workflows/promote.yml) pulls the published sidecar, updates
 `channels/stable.json` with the new distribution subset, re-signs, and opens a PR —
 merge is the promotion act. Pinned channels are never touched by automation.
+
+Guest images (VM artifacts from weaveplatform-oci) take the same path with an
+`image-published` dispatch whose payload is the promotion entry itself. Because
+that payload arrives from another repository's workflow, `promote.yml` does not
+record it as given: it re-resolves the tag and records the promotion only when
+the registry serves exactly the index and platform digests the payload names.
+The signed channel is then the statement consumers check: hostweave and the
+guestweave CLIs refuse an image whose index digest the verified channel does not
+list, whatever the tag or registry they pulled it from.

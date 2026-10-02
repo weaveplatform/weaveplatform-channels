@@ -1,24 +1,41 @@
 name: promote
 
-# The receiving end of the module release pipeline. weaveplatform-agent-core's
-# reusable module-release.yml ends by dispatching `module-published` here with
-# the module id and version it just pushed to GHCR. This job assembles that
-# module's entry for the rolling channel from the published sidecar manifest,
-# signs the result when a signing key is available, and opens a PR.
+# The receiving end of the release pipelines. Two producers dispatch here:
 #
-# Merge is the promotion act. Nothing here touches channels/pinned/: those are
-# immutable snapshots for self-hosted deployments and are never automated.
+#   module-published  weaveplatform-agent-core's reusable module-release.yml,
+#                     with the module id and version it pushed to GHCR.
+#   image-published   weaveplatform-oci's publish workflow, with the promotion
+#                     entry `weaveoci publish --promotion-out` wrote: the guest
+#                     image's repository, tag, index digest, per-platform
+#                     digests and expected build-time signer.
+#
+# Either way this job updates the rolling channel, signs the result when a
+# signing key is available, and opens a PR. Merge is the promotion act.
+# Nothing here touches channels/pinned/: those are immutable snapshots for
+# self-hosted deployments and are never automated.
 on:
   repository_dispatch:
-    types: [module-published]
+    types: [module-published, image-published]
   workflow_dispatch:
     inputs:
+      kind:
+        description: What to promote
+        type: choice
+        options: [module, image]
+        default: module
       module:
-        description: Module id (the manifest id, e.g. sysinfo)
-        required: true
+        description: Module id (the manifest id, e.g. sysinfo). Modules only.
+        required: false
       version:
-        description: Published version (e.g. 0.3.0)
-        required: true
+        description: Published version (e.g. 0.3.0). Modules only.
+        required: false
+      image:
+        description: Promotion entry JSON from `weaveoci publish --promotion-out`. Images only.
+        required: false
+      registry:
+        description: Registry host the image was pushed to. Images only.
+        required: false
+        default: ghcr.io
 
 permissions:
   contents: write
@@ -29,22 +46,49 @@ jobs:
   promote:
     runs-on: ubuntu-24.04-arm
     env:
+      KIND: ${{ github.event.action == 'image-published' && 'image' || github.event.action == 'module-published' && 'module' || inputs.kind }}
       MODULE: ${{ github.event.client_payload.module || inputs.module }}
       VERSION: ${{ github.event.client_payload.version || inputs.version }}
-      ORAS_REF: ghcr.io/${{ github.repository_owner }}/weaveplatform-modules/${{ github.event.client_payload.module || inputs.module }}:${{ github.event.client_payload.version || inputs.version }}
+      IMAGE_JSON: ${{ github.event.client_payload.image && toJSON(github.event.client_payload.image) || inputs.image }}
+      REGISTRY: ${{ github.event.client_payload.registry || inputs.registry || 'ghcr.io' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: true
 
       - uses: oras-project/setup-oras@v2
+
+      - name: Log in to the registry
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          case "$KIND" in module|image) ;; *) echo "::error::unknown kind '$KIND'"; exit 1 ;; esac
+          echo "$GH_TOKEN" | oras login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      # Seed the rolling channel on first use. The seed validates against
+      # weaveplatform-agent-core's schema (core artifacts may be empty).
+      - name: Seed the rolling channel
+        run: |
+          set -eu
+          if [ ! -f channels/stable.json ]; then
+            jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{schema:1, channel:"stable", generated_at:$now, sequence:0,
+              protocol:{min:1,max:1}, core:{version:"", artifacts:[]}, modules:[]}' > channels/stable.json
+          fi
+
+      # ---- modules ---------------------------------------------------------
 
       # The sidecar manifest is the module's own module.manifest.json with the
       # per-artifact digest and size stamped in by the publish pipeline. It is
       # the only input; nothing is typed by hand.
       - name: Fetch the published sidecar manifest
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_PAT || secrets.GITHUB_TOKEN }}
+        if: env.KIND == 'module'
         run: |
-          echo "$GH_TOKEN" | oras login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          set -eu
+          printf '%s' "$MODULE" | grep -qE '^[a-z0-9][a-z0-9._-]{0,63}$' || { echo "::error::bad module id"; exit 1; }
+          printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$' || { echo "::error::bad version"; exit 1; }
+          ORAS_REF="ghcr.io/${GITHUB_REPOSITORY_OWNER}/weaveplatform-modules/${MODULE}:${VERSION}"
+          echo "ORAS_REF=$ORAS_REF" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/pub"
           oras pull "$ORAS_REF" -o "$RUNNER_TEMP/pub"
           test -f "$RUNNER_TEMP/pub/module.manifest.json"
@@ -58,16 +102,13 @@ jobs:
       # mirror of the OCI store, or attaching binaries to releases — is a
       # decision still open; until it is made, a merged promotion is a signed
       # statement of digests, not yet a download.
-      - name: Update the rolling channel
+      - name: Promote the module
+        if: env.KIND == 'module'
         run: |
           set -eu
           SIDE="$RUNNER_TEMP/pub/module.manifest.json"
           STABLE=channels/stable.json
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          if [ ! -f "$STABLE" ]; then
-            jq -n --arg now "$NOW" '{schema:1, channel:"stable", generated_at:$now, sequence:0,
-              protocol:{min:1,max:1}, core:{version:"", artifacts:[]}, modules:[]}' > "$STABLE"
-          fi
           ENTRY=$(jq --arg ref "$ORAS_REF" '{
               id, version, protocol, privilege, session,
               capabilities: (.capabilities // []),
@@ -80,7 +121,89 @@ jobs:
               | .sequence += 1
               | .generated_at = $now' "$STABLE" > "$STABLE.new"
           mv "$STABLE.new" "$STABLE"
-          jq . "$STABLE"
+          {
+            echo "SUBJECT=${MODULE} ${VERSION}"
+            echo "BRANCH=promote/module-${MODULE}-${VERSION}"
+            echo "SOURCE=the published sidecar at \`${ORAS_REF}\`"
+          } >> "$GITHUB_ENV"
+
+      # ---- images ----------------------------------------------------------
+
+      # The payload is untrusted input: it is checked field by field against
+      # the channel manifest schema's image rules, and its digests are then
+      # re-resolved from the registry. The PR only ever records what the
+      # registry serves for that tag right now.
+      - name: Validate the image entry
+        if: env.KIND == 'image'
+        run: |
+          set -eu
+          printf '%s' "$IMAGE_JSON" > "$RUNNER_TEMP/image.json"
+          printf '%s' "$REGISTRY" | grep -qE '^[a-z0-9.-]+(:[0-9]+)?$' || { echo "::error::bad registry host"; exit 1; }
+          jq -e '
+            def dg: type == "string" and test("^sha256:[a-f0-9]{64}$");
+            def str: type == "string" and length > 0;
+            type == "object"
+            and (keys - ["repository","tag","digest","platforms","signature","build_date"] | length == 0)
+            and (.repository | str and test("^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$"))
+            and (.tag | str and test("^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$"))
+            and (.digest | dg)
+            and ((.platforms // []) | type == "array" and all(.[];
+                  type == "object"
+                  and (keys - ["os","arch","os_version","digest"] | length == 0)
+                  and (.os | str) and (.arch | str) and (.digest | dg)
+                  and ((.os_version // "x") | type == "string")))
+            and ((.signature // {provider:"cosign-key"}) | type == "object"
+                  and (keys - ["provider","key_id","issuer","subject_regexp"] | length == 0)
+                  and (.provider == "cosign-key" or .provider == "github-attestation"))
+            and ((.build_date // "x") | type == "string")
+          ' "$RUNNER_TEMP/image.json" > /dev/null || { echo "::error::image entry does not match the channel schema"; exit 1; }
+          jq . "$RUNNER_TEMP/image.json"
+
+      - name: Re-resolve the image from the registry
+        if: env.KIND == 'image'
+        run: |
+          set -eu
+          REPO=$(jq -r .repository "$RUNNER_TEMP/image.json")
+          TAG=$(jq -r .tag "$RUNNER_TEMP/image.json")
+          WANT=$(jq -r .digest "$RUNNER_TEMP/image.json")
+          REF="${REGISTRY}/${REPO}:${TAG}"
+          GOT=$(oras resolve "$REF")
+          if [ "$GOT" != "$WANT" ]; then
+            echo "::error::${REF} resolves to ${GOT}, the payload says ${WANT}"
+            exit 1
+          fi
+          oras manifest fetch "${REGISTRY}/${REPO}@${WANT}" > "$RUNNER_TEMP/index.json"
+          jq -e '.mediaType == "application/vnd.oci.image.index.v1+json"' "$RUNNER_TEMP/index.json" > /dev/null \
+            || { echo "::error::${REF} is not an OCI image index"; exit 1; }
+          # Every platform the payload names must be a child of that index,
+          # with the same digest.
+          jq -e --slurpfile idx "$RUNNER_TEMP/index.json" '
+            [ $idx[0].manifests[] | {os: .platform.os, arch: .platform.architecture, digest} ] as $children
+            | all((.platforms // [])[]; {os, arch, digest} as $p | any($children[]; . == $p))
+          ' "$RUNNER_TEMP/image.json" > /dev/null || { echo "::error::payload platforms do not match the index children"; exit 1; }
+          {
+            echo "SUBJECT=${REPO}:${TAG}"
+            echo "BRANCH=promote/image-$(printf '%s' "${REPO}-${TAG}" | tr '/' '-')"
+            echo "SOURCE=\`${REF}\` (re-resolved to \`${WANT}\`)"
+          } >> "$GITHUB_ENV"
+
+      # Same rule as pkg/channel.Promote in weaveplatform-oci: an entry is
+      # replaced by repository and tag, entries sort by repository then tag,
+      # and sequence only ever goes up.
+      - name: Promote the image
+        if: env.KIND == 'image'
+        run: |
+          set -eu
+          STABLE=channels/stable.json
+          jq --slurpfile e "$RUNNER_TEMP/image.json" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+              $e[0] as $e
+              | .images = ([(.images // [])[] | select(.repository != $e.repository or .tag != $e.tag)] + [$e]
+                           | sort_by(.repository, .tag))
+              | .sequence += 1
+              | .generated_at = $now' "$STABLE" > "$STABLE.new"
+          mv "$STABLE.new" "$STABLE"
+
+      # ---- both ------------------------------------------------------------
 
       # weavemanifest ships in the agent release; this repository never
       # carries a copy of the signing code. Signing is skipped, loudly, when
@@ -92,28 +215,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
+          jq . channels/stable.json
           if [ -z "$SIGNING_KEY" ]; then
             echo "::warning::CHANNEL_SIGNING_KEY is not set — channels/stable.json is NOT signed"
             exit 0
           fi
-          gh release download -R "${{ github.repository_owner }}/weaveplatform-agent-core" \
+          gh release download -R "${GITHUB_REPOSITORY_OWNER}/weaveplatform-agent-core" \
             --pattern 'weaveplatform-agent_*_linux_arm64.tar.gz' -O "$RUNNER_TEMP/agent.tgz"
           tar -xzf "$RUNNER_TEMP/agent.tgz" -C "$RUNNER_TEMP" weavemanifest
           printf '%s' "$SIGNING_KEY" > "$RUNNER_TEMP/signing.key"
           "$RUNNER_TEMP/weavemanifest" sign "$RUNNER_TEMP/signing.key" channels/stable.json
           rm -f "$RUNNER_TEMP/signing.key"
 
+      # Titles follow this repository's conventional-commit PR title rule.
       - name: Open the promotion PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          BRANCH="promote/${MODULE}-${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add channels/stable.json channels/stable.json.sig 2>/dev/null || git add channels/stable.json
-          git commit -m "promote(${MODULE}): ${VERSION} to stable"
+          git add channels/stable.json
+          if [ -f channels/stable.json.sig ]; then git add channels/stable.json.sig; fi
+          git commit -m "chore(promote): ${SUBJECT} to stable"
           git push -u origin "$BRANCH"
-          gh pr create --title "promote(${MODULE}): ${VERSION} to stable" \
-            --body "Assembled from the published sidecar at \`${ORAS_REF}\`. Merging is the promotion act."
+          gh pr create --title "chore(promote): ${SUBJECT} to stable" \
+            --body "Assembled from ${SOURCE}. Merging is the promotion act."
