@@ -27,7 +27,7 @@ flowchart LR
 ## How a module reaches the channel
 
 The platform repository's reusable
-[`module-release.yml`](https://github.com/deploymenttheory/weaveplatform-agent-core/blob/main/.github/workflows/module-release.yml)
+[`module-release.yml`](https://github.com/weaveplatform/weaveplatform-agent-core/blob/main/.github/workflows/module-release.yml)
 builds a module for every platform in its manifest, pushes the binaries to GHCR
 with a digest-stamped sidecar, and dispatches `module-published` here with the
 id and version. `promote.yml` pulls that sidecar, rewrites the module's entry in
@@ -59,7 +59,7 @@ policy. [`docs/trust-chain.md`](docs/trust-chain.md) has the full chain and what
 each step defends against.
 
 The document schema is
-[`schema/channel-manifest.schema.json`](https://github.com/deploymenttheory/weaveplatform-agent-core/blob/main/schema/channel-manifest.schema.json)
+[`schema/channel-manifest.schema.json`](https://github.com/weaveplatform/weaveplatform-agent-core/blob/main/schema/channel-manifest.schema.json)
 in the platform repository; the Go types are `sdk/manifest`; the verifier is
 `internal/manifestverify`.
 

@@ -20,7 +20,7 @@ flowchart TD
 
 Everything is a detached Ed25519 signature in a small JSON envelope beside the file
 (`<name>.sig`). Verification is ~200 lines in core
-([`internal/manifestverify`](https://github.com/deploymenttheory/weaveplatform-agent-core/tree/main/internal/manifestverify)),
+([`internal/manifestverify`](https://github.com/weaveplatform/weaveplatform-agent-core/tree/main/internal/manifestverify)),
 deliberately not in the SDK: a CVE is a core patch, not a rebuild of every module. An
 air-gapped self-hosted deployment verifies with nothing but the root key already baked into
 its core binary — no Fulcio, no Rekor, no CA.
@@ -57,7 +57,7 @@ signing key.
 ## Promotion
 
 When a module publishes (through the platform repository's reusable
-[`module-release.yml`](https://github.com/deploymenttheory/weaveplatform-agent-core/blob/main/.github/workflows/module-release.yml)),
+[`module-release.yml`](https://github.com/weaveplatform/weaveplatform-agent-core/blob/main/.github/workflows/module-release.yml)),
 the pipeline sends a `repository_dispatch` here with the module id and version.
 [`promote.yml`](../.github/workflows/promote.yml) pulls the published sidecar, updates
 `channels/stable.json` with the new distribution subset, re-signs, and opens a PR —
