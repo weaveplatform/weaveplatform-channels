@@ -18,11 +18,11 @@ flowchart LR
 
 | Path | What |
 |---|---|
-| `channels/stable.json` (+ `.sig`) | The rolling channel: updated and re-signed by the promotion PR for every published module. SaaS agents follow it |
+| `channels/stable.json` (+ `.sig`) | The rolling channel: updated and re-signed by the promotion PR for every published module and guest image. SaaS agents follow it; hostweave and the guestweave CLIs only run guest images it lists |
 | `channels/pinned/<service-version>.json` | Immutable snapshots for self-hosted deployments; created once, never touched again, never automated |
 | `keys/root.pub` | The offline root public key. The copy core trusts is embedded in the agent binary (`internal/core/keys/root.pub`); this one is for operators verifying by hand |
 | `keys/signing-<year>.pub` (+ `.sig`) | Annual signing keys, endorsed by the root |
-| `.github/workflows/promote.yml` | The receiver for `module-published` dispatches from the module release pipeline |
+| `.github/workflows/promote.yml` | The receiver for `module-published` and `image-published` dispatches from the release pipelines |
 
 ## How a module reaches the channel
 
@@ -33,6 +33,26 @@ with a digest-stamped sidecar, and dispatches `module-published` here with the
 id and version. `promote.yml` pulls that sidecar, rewrites the module's entry in
 `channels/stable.json`, bumps the sequence, signs when a signing key is
 provisioned, and opens a PR. **Merging is the promotion act.**
+
+## How a guest image reaches the channel
+
+[weaveplatform-oci](https://github.com/weaveplatform/weaveplatform-oci)'s publish
+pipeline runs `weaveoci publish --promotion-out entry.json` and dispatches
+`image-published` here with that entry as `client_payload.image` (and
+`client_payload.registry`, default `ghcr.io`). The entry names the repository
+(without a registry host, so one entry admits the image from GHCR, a mirror or
+an air-gapped layout), the tag, the index digest, the per-platform digests and
+the expected build-time signer.
+
+`promote.yml` treats the payload as untrusted: it checks every field against the
+schema's image rules, re-resolves the tag from the registry, refuses the
+promotion if the registry's index digest or children differ from the payload,
+then adds or replaces the entry by repository and tag, bumps the sequence,
+signs and opens a PR. A manual run (`workflow_dispatch`, kind `image`) takes the
+same entry as JSON.
+
+Private registries that GitHub cannot reach promote locally instead, with the
+same rules: `weaveoci channel promote` followed by `weavemanifest sign`.
 
 ## The tool
 
