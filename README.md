@@ -1,8 +1,9 @@
 # weaveplatform-channels
 
 The signed channel manifests for the Weave platform, and the public half of the
-keys that sign them. Data, not code: nothing here is imported by anything, and
-the only workflow opens promotion PRs.
+keys that sign them. Data, not code: nothing here is imported by anything. One
+workflow opens promotion PRs; the quality gate proves every document is one
+core would accept.
 
 Core trusts nothing it fetches until it verifies against the chain rooted here.
 
@@ -23,6 +24,9 @@ flowchart LR
 | `keys/root.pub` | The offline root public key. The copy core trusts is embedded in the agent binary (`internal/core/keys/root.pub`); this one is for operators verifying by hand |
 | `keys/signing-<year>.pub` (+ `.sig`) | Annual signing keys, endorsed by the root |
 | `.github/workflows/promote.yml` | The receiver for `module-published` and `image-published` dispatches from the release pipelines |
+| `.github/workflows/quality-gate.yml` | Schema, signature, sequence and pinned-immutability checks on every PR and push to main |
+| `.github/agent-core-version` | The agent-core release whose schema the gate validates against and whose `weavemanifest` signs and verifies |
+| `scripts/` | `promote.sh` (apply and land a promotion), `check-channels.sh` (the gate's checks), `fetch-weavemanifest.sh` |
 
 ## How a module reaches the channel
 
@@ -32,7 +36,8 @@ builds a module for every platform in its manifest, pushes the binaries to GHCR
 with a digest-stamped sidecar, and dispatches `module-published` here with the
 id and version. `promote.yml` pulls that sidecar, rewrites the module's entry in
 `channels/stable.json`, bumps the sequence, signs when a signing key is
-provisioned, and opens a PR. **Merging is the promotion act.**
+provisioned, and adds it to the pending promotion PR. **Merging is the
+promotion act.**
 
 ## How a guest image reaches the channel
 
@@ -48,17 +53,42 @@ the expected build-time signer.
 schema's image rules, re-resolves the tag from the registry, refuses the
 promotion if the registry's index digest or children differ from the payload,
 then adds or replaces the entry by repository and tag, bumps the sequence,
-signs and opens a PR. A manual run (`workflow_dispatch`, kind `image`) takes the
+signs and adds it to the pending promotion PR. A manual run (`workflow_dispatch`, kind `image`) takes the
 same entry as JSON.
 
 Private registries that GitHub cannot reach promote locally instead, with the
 same rules: `weaveoci channel promote` followed by `weavemanifest sign`.
 
+## The promotion PR
+
+Every promotion lands on one branch, `promote/stable`, with one open PR that
+lists each item it carries. A release of a dozen modules dispatches a dozen
+runs at once, so there is no concurrency group (GitHub would keep one pending
+run and cancel the rest). Each run validates its own entry, then
+`scripts/promote.sh land` applies it on the pending branch (or on `main` when
+no promotion is pending) and pushes with `--force-with-lease`; a run that
+loses the race to another push starts again from the new tip, up to ten
+times. Re-promoting something already present changes nothing.
+
+The run pushes and opens the PR with the org's release-please GitHub App
+token (`RP_APP_ID` / `RP_APP_PRIVATE_KEY`), falling back to
+`RELEASE_PLEASE_PAT` with a warning: a PR pushed with `GITHUB_TOKEN` would
+never run its checks.
+
+The quality gate runs on that PR like any other: the schema from the pinned
+agent-core release, core's ParseChannel rules, `weavemanifest verify` on any
+`.sig` (unsigned is a notice until a signing key is provisioned), `sequence`
+never below main's and raised whenever the document changes, no change to an
+existing pinned snapshot, and actionlint. [CONTRIBUTING.md](CONTRIBUTING.md)
+has the same rules for hand-made changes.
+
 ## The tool
 
 `weavemanifest` (`keygen | endorse | sign | verify`) ships with the agent
 release — its `verify` *is* core's verifier, so a manifest it accepts is one
-core accepts. This repository carries no copy.
+core accepts. This repository carries no copy; CI downloads the release named
+in `.github/agent-core-version` and checks it against that release's
+checksums.
 
 ```console
 weavemanifest keygen root root                   # once, offline; root.key goes in the drawer
