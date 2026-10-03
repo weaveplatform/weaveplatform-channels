@@ -1,60 +1,73 @@
-# weaveplatform-channels
+# weaveplatform-release-channels
 
-The signed channel manifests for the Weave platform, and the public half of the
-keys that sign them. Data, not code: nothing here is imported by anything. One
-workflow opens promotion PRs; the quality gate proves every document is one
-core would accept.
+**Which versions of the weave agent's modules and guest images every device is
+allowed to run.**
 
-Core trusts nothing it fetches until it verifies against the chain rooted here.
+Building a module or an image does not release it. A release reaches devices
+only when it is listed in a release channel here, and a channel is a signed
+document that the weave agent core on each device fetches, verifies against a
+key compiled into it, and then follows: it installs the module versions the
+channel names, refuses anything else, and hosts boot only the guest images it
+lists.
+
+This repository holds the channels, the public keys that verify them, and the
+automation that proposes changes and checks them. It is data, not code: nothing
+imports it.
 
 ```mermaid
 flowchart LR
-    root["root key<br/>(offline; pub embedded in core)"] -->|endorses| signing["signing key<br/>(annual, in CI)"]
-    signing -->|signs| ch["channel manifest<br/>stable / pinned"]
-    ch -->|"fetched + chain-verified"| core["core on every device"]
+    rel["module / image release<br/>(built and pushed to GHCR)"] -->|"promotion PR"| ch["release channel<br/>stable / pinned<br/>(signed)"]
+    root["root key<br/>(offline; public half in core)"] -->|endorses| signing["signing key<br/>(annual)"]
+    signing -->|signs| ch
+    ch -->|"fetched + verified"| core["weave agent core<br/>on every device"]
     style root fill:#8957e5,color:#fff
 ```
 
-## What
+## The channels
 
-A **channel** is a signed list of the exact releases that Weave devices are
-allowed to run: which version of each agent module (`weave-linux-exec 0.1.0`,
-…) and which guest images (by repository, tag and digest). Weave agent-core,
-running on every VM, container or device the platform manages, fetches the
-channel, verifies its signature chain, and installs or refuses modules
-accordingly. Hosts such as hostweave and the guestweave CLIs use the same list
-to decide which guest images they will boot.
+| Channel | What it is | Who follows it |
+|---|---|---|
+| `channels/stable.json` | The rolling channel. Every module and image release is proposed here by a promotion PR; **merging the PR is the release** | SaaS-managed devices, and hosts deciding which guest images to boot |
+| `channels/pinned/<version>.json` | A snapshot that never changes once added | Self-hosted and air-gapped sites that certify one exact set of versions |
 
-There are two kinds:
+Each entry is exact: a module id, version and per-platform digests; an image
+repository, tag and digests. Nothing is "latest".
 
-- **`stable`**: the rolling channel. Every published module or image is
-  proposed here through a promotion PR, and merging that PR releases it to the
-  fleet.
-- **`pinned/<version>`**: a frozen snapshot for self-hosted deployments that
-  must not move until their operator chooses to.
+## Why a separate, signed release channel
 
-This repository holds those documents, the public keys that verify them, and
-the automation that proposes and checks changes. It holds no code that any
-product imports.
-
-## Why
-
-- **Publishing is not releasing.** A module or image reaching GHCR only means
-  it was built. It reaches devices when a person merges its promotion, so a bad
-  build can be stopped, and a release of many modules lands as one reviewed
-  change.
+- **Building is not releasing.** A module or image in GHCR has only been built.
+  It reaches devices when a person merges its promotion, so a bad build can be
+  stopped, and a release of many modules lands as one reviewed change.
 - **Devices trust the signature, not the registry.** Core accepts a channel
   only if it verifies against the offline root key compiled into core. A
   compromised registry, mirror or network path cannot add a module or swap an
   image digest.
 - **No rollback or replay.** Every change raises `sequence`, and core refuses a
-  document older than one it has already accepted, so an attacker cannot serve
-  a stale but validly signed channel to downgrade a device.
-- **One source for every product and every place it runs.** Hyperscaler VMs,
-  local VMs, cloud containers and local containers all read the same list,
-  and air-gapped sites verify it offline with no infrastructure.
-- **Reproducible self-hosting.** Pinned snapshots let an operator certify one
-  exact set of versions and keep it while `stable` moves on.
+  document older than one it has already accepted, so a stale but validly
+  signed channel cannot downgrade a device.
+- **No module the device cannot run.** Every module's protocol must sit inside
+  the channel's protocol window, so no device is offered a module it would
+  refuse to start.
+- **One list for every product and place.** Hyperscaler VMs, local VMs, cloud
+  containers and local containers follow the same channel, and air-gapped
+  sites verify it offline.
+
+## Where it sits
+
+The weave agent follows the Terraform split between core and plugins, and this
+repository is the registry in that picture:
+
+| Terraform | Weave |
+|---|---|
+| `hashicorp/terraform` (core; owns the plugin protocol) | [weaveplatform-agent-core](https://github.com/weaveplatform/weaveplatform-agent-core): owns the protocol, the channel schema and the verifier (`weavemanifest`) |
+| `terraform-plugin-framework` and the providers | [weaveplatform-agent-modules](https://github.com/weaveplatform/weaveplatform-agent-modules): the module SDK and every module |
+| The Terraform Registry, with signed provider releases | **weaveplatform-release-channels** (this repository) |
+| `.terraform.lock.hcl` | core's accepted channel `sequence` and module digests |
+| Provider network and filesystem mirrors | pinned channels and core's `--channel-dir` |
+
+One difference: Terraform's registry lists every published version and users
+choose with version constraints. A release channel is curated: a version is
+offered only once its promotion is merged.
 
 ## Layout
 
@@ -71,8 +84,8 @@ product imports.
 
 ## How a module reaches the channel
 
-The platform repository's reusable
-[`module-release.yml`](https://github.com/weaveplatform/weaveplatform-agent-core/blob/main/.github/workflows/module-release.yml)
+weaveplatform-agent-modules'
+[`module-release.yml`](https://github.com/weaveplatform/weaveplatform-agent-modules/blob/main/.github/workflows/module-release.yml)
 builds a module for every platform in its manifest, pushes the binaries to GHCR
 with a digest-stamped sidecar, and dispatches `module-published` here with the
 id and version. `promote.yml` pulls that sidecar, rewrites the module's entry in
