@@ -15,6 +15,47 @@ flowchart LR
     style root fill:#8957e5,color:#fff
 ```
 
+## What
+
+A **channel** is a signed list of the exact releases that Weave devices are
+allowed to run: which version of each agent module (`weave-linux-exec 0.1.0`,
+…) and which guest images (by repository, tag and digest). Weave agent-core,
+running on every VM, container or device the platform manages, fetches the
+channel, verifies its signature chain, and installs or refuses modules
+accordingly. Hosts such as hostweave and the guestweave CLIs use the same list
+to decide which guest images they will boot.
+
+There are two kinds:
+
+- **`stable`**: the rolling channel. Every published module or image is
+  proposed here through a promotion PR, and merging that PR releases it to the
+  fleet.
+- **`pinned/<version>`**: a frozen snapshot for self-hosted deployments that
+  must not move until their operator chooses to.
+
+This repository holds those documents, the public keys that verify them, and
+the automation that proposes and checks changes. It holds no code that any
+product imports.
+
+## Why
+
+- **Publishing is not releasing.** A module or image reaching GHCR only means
+  it was built. It reaches devices when a person merges its promotion, so a bad
+  build can be stopped, and a release of many modules lands as one reviewed
+  change.
+- **Devices trust the signature, not the registry.** Core accepts a channel
+  only if it verifies against the offline root key compiled into core. A
+  compromised registry, mirror or network path cannot add a module or swap an
+  image digest.
+- **No rollback or replay.** Every change raises `sequence`, and core refuses a
+  document older than one it has already accepted, so an attacker cannot serve
+  a stale but validly signed channel to downgrade a device.
+- **One source for every product and every place it runs.** Hyperscaler VMs,
+  local VMs, cloud containers and local containers all read the same list,
+  and air-gapped sites verify it offline with no infrastructure.
+- **Reproducible self-hosting.** Pinned snapshots let an operator certify one
+  exact set of versions and keep it while `stable` moves on.
+
 ## Layout
 
 | Path | What |
@@ -115,8 +156,8 @@ in the platform repository; the Go types are `sdk/manifest`; the verifier is
 
 ## Still to decide
 
-Core fetches the channel bundle over HTTP (`--manifest-url`), and this
-repository is private. Something has to *serve* `channels/` — make this
-repository public (it holds only public keys and signed documents), publish to
-GitHub Pages, or push the bundle to GHCR beside the modules. The same decision
+Core fetches the channel bundle over HTTP (`--manifest-url`). This repository
+is public, but something still has to *serve* `channels/` at a stable URL:
+raw repository content, GitHub Pages, or the bundle pushed to GHCR beside the
+modules. The same decision
 covers the module binaries themselves, which today live only in the OCI store.
