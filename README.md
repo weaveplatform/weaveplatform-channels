@@ -117,7 +117,8 @@ token (`RP_APP_ID` / `RP_APP_PRIVATE_KEY`), falling back to
 never run its checks.
 
 The quality gate runs on that PR like any other: the schema from the pinned
-agent-core release, core's ParseChannel rules, `weavemanifest verify` on any
+agent-core release, core's ParseChannel rules, every module's `protocol` inside
+the channel's protocol window, `weavemanifest verify` on any
 `.sig` (unsigned is a notice until a signing key is provisioned), `sequence`
 never below main's and raised whenever the document changes, no change to an
 existing pinned snapshot, and actionlint. [CONTRIBUTING.md](CONTRIBUTING.md)
@@ -151,8 +152,11 @@ each step defends against.
 
 The document schema is
 [`schema/channel-manifest.schema.json`](https://github.com/weaveplatform/weaveplatform-agent-core/blob/main/schema/channel-manifest.schema.json)
-in the platform repository; the Go types are `sdk/manifest`; the verifier is
-`internal/manifestverify`.
+in agent-core. Core owns the types (`internal/protocol/manifest`) and the
+verifier (`internal/manifestverify`); modules see the same types through the
+module SDK in
+[weaveplatform-agent-modules](https://github.com/weaveplatform/weaveplatform-agent-modules)
+(`sdk/protocol/manifest`).
 
 ## Still to decide
 
