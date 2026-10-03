@@ -26,7 +26,9 @@ A manual promotion is the same workflow run with `workflow_dispatch`.
 
 - Every channel document validates against agent-core's
   `schema/channel-manifest.schema.json` at the release pinned in
-  `.github/agent-core-version`, and against core's ParseChannel rules.
+  `.github/agent-core-version`, and against core's ParseChannel rules. Every
+  module's `protocol` must sit inside the channel's `protocol` window: core would
+  accept the document and then refuse to run that module on every device.
 - A `.sig` must verify with `weavemanifest verify` under `keys/root.pub`.
   An unsigned document is reported, not failed, until a signing key is
   provisioned.

@@ -57,6 +57,16 @@ apply() {
 	*) echo "unknown kind '$kind'" >&2; return 2 ;;
 	esac
 	seed "$f"
+	# The channel's protocol window is what every device following it speaks.
+	# A module outside it would be fetched, verified and then refused by the
+	# supervisor as an unsupported protocol on every device, so it is refused
+	# here, before it is offered — the registry-side check Terraform makes on a
+	# provider's declared protocol_versions.
+	if [ "$kind" = module ] && ! jq -e --slurpfile e "$entry" \
+		'($e[0].protocol // 0) as $p | $p >= .protocol.min and $p <= .protocol.max' "$f" > /dev/null; then
+		echo "::error::$(jq -r '.id + " " + .version + " speaks protocol " + ((.protocol // 0) | tostring)' "$entry"), outside the channel's window $(jq -c .protocol "$f")" >&2
+		return 4
+	fi
 	jq --slurpfile e "$entry" --arg now "$(now)" "\$e[0] as \$e | $filter | .sequence += 1 | .generated_at = \$now" \
 		"$f" > "$f.new"
 	# Re-applying an entry the channel already carries must not mint a new

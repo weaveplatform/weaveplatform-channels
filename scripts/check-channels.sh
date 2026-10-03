@@ -14,9 +14,11 @@ channel_files() {
 	done
 }
 
-# sdk/manifest.ParseChannel in weaveplatform-agent-core refuses these, and the
+# ParseChannel in weaveplatform-agent-core (internal/protocol/manifest) refuses these, and the
 # schema does not say so: a module id or version that would be unsafe as a
-# path component, and an inverted protocol window. Without this, an unsigned
+# path component, and an inverted protocol window. It also refuses a module
+# whose protocol falls outside the channel's window, which core would accept
+# and then fail to run. Without this, an unsigned
 # document passes the gate and is refused by every device once signed.
 parse() {
 	local f bad=0
@@ -27,6 +29,17 @@ parse() {
 		                        and (.version | test("^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$")))
 		  ' "$f" > /dev/null; then
 			echo "::error file=$f::module id/version or protocol window that core's ParseChannel refuses"
+			bad=1
+		fi
+		# Core parses a module outside the window, then its supervisor refuses
+		# to run it: every device would fetch a module it cannot start.
+		jq -r '.protocol as $w | .modules[]
+		       | select((.protocol // 0) < $w.min or (.protocol // 0) > $w.max)
+		       | "\(.id) \(.version) speaks protocol \(.protocol // 0), outside \($w.min)..\($w.max)"' "$f" |
+			while read -r line; do
+				echo "::error file=$f::$line"
+			done
+		if jq -e '.protocol as $w | any(.modules[]; (.protocol // 0) < $w.min or (.protocol // 0) > $w.max)' "$f" > /dev/null; then
 			bad=1
 		fi
 	done < <(channel_files)
