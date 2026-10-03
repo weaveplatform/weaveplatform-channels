@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "generated_at": "2026-10-03T05:07:13Z",
-  "sequence": 15,
+  "generated_at": "2026-10-03T05:07:53Z",
+  "sequence": 16,
   "protocol": {
     "min": 1,
     "max": 1
@@ -381,6 +381,29 @@
           "size": 16698880
         }
       ]
+    }
+  ],
+  "images": [
+    {
+      "repository": "weaveplatform/weave-images/ubuntu-24.04-base",
+      "tag": "24.04-20260926-r1",
+      "digest": "sha256:8ceda41e7a724fe9fdfa5ba3f7b3c1db0fb813ed4c59896af7a4fbcc92fdb9c8",
+      "platforms": [
+        {
+          "os": "linux",
+          "arch": "amd64",
+          "digest": "sha256:479fd63305c60a57ed249852102bfef0422613be8bdc363c8604cabefdc47880"
+        },
+        {
+          "os": "linux",
+          "arch": "arm64",
+          "digest": "sha256:0400e7d8200995d7ebd4c6e1aabb2efabb74b6b8db8124db5f35abcec918499c"
+        }
+      ],
+      "signature": {
+        "provider": "github-attestation"
+      },
+      "build_date": "2026-10-02T19:22:47Z"
     }
   ]
 }
