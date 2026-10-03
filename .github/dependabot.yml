@@ -1,11 +1,19 @@
+# Nothing but workflows to keep current: this repository holds signed
+# documents and public keys, no code. Updates arrive weekly, grouped into one
+# PR, majors included; auto-merge.yml merges it once the quality gate passes
+# on it, so the gate is the only thing that can hold an update back.
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
 version: 2
 updates:
-  # Nothing but workflows to keep current: this repository holds signed
-  # documents and public keys, no code.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+        update-types: ["major", "minor", "patch"]
     commit-message:
+      # "chore(deps): …": conventional, and not a releasable change
       prefix: "chore"
       include: "scope"
