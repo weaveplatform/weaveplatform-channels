@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "channel": "stable",
+  "generated_at": "2026-10-03T05:00:28Z",
+  "sequence": 1,
+  "protocol": {
+    "min": 1,
+    "max": 1
+  },
+  "core": {
+    "version": "",
+    "artifacts": []
+  },
+  "modules": [
+    {
+      "id": "weave-linux-presence",
+      "version": "0.1.0",
+      "protocol": 1,
+      "privilege": "service",
+      "session": "system",
+      "capabilities": [
+        "hypervisor.channel"
+      ],
+      "subscribes": [],
+      "artifacts": [
+        {
+          "os": "linux",
+          "arch": "amd64",
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-presence:0.1.0#linux-amd64",
+          "digest": "sha256:bf14b8fe23938d808116555d1042c74b48a5ceab11fa218ac5f148affeddfa09",
+          "size": 17097816
+        },
+        {
+          "os": "linux",
+          "arch": "arm64",
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-presence:0.1.0#linux-arm64",
+          "digest": "sha256:9ea75a57b84ced51abc9a1b3d5ac25f2c3107ae1eb2d7ad563b08db4d0694156",
+          "size": 16080269
+        }
+      ]
+    }
+  ]
+}
