@@ -10,7 +10,11 @@ name: promote
 #                     digests and expected build-time signer.
 #
 # Either way this job updates the rolling channel, signs the result when a
-# signing key is available, and opens a PR. Merge is the promotion act.
+# signing key is available, and adds it to the one pending promotion PR
+# (branch promote/stable), opening that PR if there is none. A release of
+# several modules dispatches several times; those runs queue (one at a time)
+# and accumulate, so they land as one reviewable change instead of a PR each
+# that conflicts with the rest. Merge is the promotion act.
 # Nothing here touches channels/pinned/: those are immutable snapshots for
 # self-hosted deployments and are never automated.
 on:
@@ -37,6 +41,12 @@ on:
         required: false
         default: ghcr.io
 
+# One at a time, never cancelled: every run builds on the pending branch the
+# previous one pushed.
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: write
@@ -55,6 +65,25 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: true
+          fetch-depth: 0
+
+      # Build on the pending promotion while its PR is open, so this run's
+      # change joins it rather than racing it. With no open PR, any
+      # promote/stable branch left behind is history (merged or closed), so
+      # start again from main and replace it.
+      - name: Start from the pending promotion
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          if [ -n "$(gh pr list --head promote/stable --state open --json number --jq '.[0].number // empty')" ]; then
+            git fetch origin promote/stable
+            git checkout -B promote/stable origin/promote/stable
+            echo "PUSH_ARGS=" >> "$GITHUB_ENV"
+          else
+            git checkout -B promote/stable
+            echo "PUSH_ARGS=--force" >> "$GITHUB_ENV"
+          fi
 
       - uses: oras-project/setup-oras@v2
 
@@ -123,7 +152,6 @@ jobs:
           mv "$STABLE.new" "$STABLE"
           {
             echo "SUBJECT=${MODULE} ${VERSION}"
-            echo "BRANCH=promote/module-${MODULE}-${VERSION}"
             echo "SOURCE=the published sidecar at \`${ORAS_REF}\`"
           } >> "$GITHUB_ENV"
 
@@ -183,7 +211,6 @@ jobs:
           ' "$RUNNER_TEMP/image.json" > /dev/null || { echo "::error::payload platforms do not match the index children"; exit 1; }
           {
             echo "SUBJECT=${REPO}:${TAG}"
-            echo "BRANCH=promote/image-$(printf '%s' "${REPO}-${TAG}" | tr '/' '-')"
             echo "SOURCE=\`${REF}\` (re-resolved to \`${WANT}\`)"
           } >> "$GITHUB_ENV"
 
@@ -227,18 +254,31 @@ jobs:
           "$RUNNER_TEMP/weavemanifest" sign "$RUNNER_TEMP/signing.key" channels/stable.json
           rm -f "$RUNNER_TEMP/signing.key"
 
-      # Titles follow this repository's conventional-commit PR title rule.
-      - name: Open the promotion PR
+      # Titles follow this repository's conventional-commit PR title rule. The
+      # body lists every item the pending promotion carries, one line each.
+      - name: Open or extend the promotion PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
           git add channels/stable.json
           if [ -f channels/stable.json.sig ]; then git add channels/stable.json.sig; fi
+          if git diff --cached --quiet; then
+            echo "::notice::${SUBJECT} is already in the pending promotion"
+            exit 0
+          fi
           git commit -m "chore(promote): ${SUBJECT} to stable"
-          git push -u origin "$BRANCH"
-          gh pr create --title "chore(promote): ${SUBJECT} to stable" \
-            --body "Assembled from ${SOURCE}. Merging is the promotion act."
+          # shellcheck disable=SC2086 # PUSH_ARGS is empty or one flag
+          git push $PUSH_ARGS origin promote/stable
+          LINE="- ${SUBJECT}, assembled from ${SOURCE}"
+          PR=$(gh pr list --head promote/stable --state open --json number --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then
+            gh pr create --head promote/stable --title "chore(promote): promote to stable" \
+              --body "$(printf 'Merging is the promotion act. This promotion carries:\n\n%s\n' "$LINE")"
+          else
+            gh pr view "$PR" --json body --jq .body > "$RUNNER_TEMP/body.md"
+            printf '%s\n' "$LINE" >> "$RUNNER_TEMP/body.md"
+            gh pr edit "$PR" --body-file "$RUNNER_TEMP/body.md"
+          fi
