@@ -5,6 +5,22 @@ tool that mints and verifies the chain lives in weaveplatform-agent-core. Commen
 decision — what is checked, what is deliberately not, and what an attacker would
 gain from getting it wrong — are the ones worth the space here.
 
+## Workflows and scripts
+
+- `promote.yml` has no concurrency group on purpose (GitHub would cancel all
+  but one pending run). Race safety lives in `scripts/promote.sh land`: apply
+  on a fresh base, `--force-with-lease` push, retry. Keep the merge rules in
+  that script only.
+- Pushes and PRs use the org App token (`vars.RP_APP_ID`,
+  `secrets.RP_APP_PRIVATE_KEY`), falling back to `RELEASE_PLEASE_PAT` with a
+  warning. Never `GITHUB_TOKEN`: its pushes trigger no checks.
+- `.github/agent-core-version` pins the schema and `weavemanifest` together;
+  move it, don't vendor either.
+- The `Quality gate` job is the one required check. `channels/pinned/` is
+  add-only; `sequence` never goes down.
+- Actions pinned by SHA with a version comment, `harden-runner` first in every
+  job; `actionlint` and `shellcheck` must stay clean.
+
 ## Comments: what and why, sparse and deep
 
 Comment the **reasoning a reader cannot recover from the code**. Delete anything

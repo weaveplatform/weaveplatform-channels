@@ -1,0 +1,153 @@
+name: channels | Quality gate
+
+# Every pull request, and every push to main, proves the channel documents
+# are ones core would accept: schema-valid and ParseChannel-clean, signatures
+# verifying under the repository's root key where present, sequence never
+# lowered and pinned snapshots never changed. The `gate` job is the single
+# required status check.
+#
+# The schema and weavemanifest both come from the weaveplatform-agent-core
+# release named in .github/agent-core-version, fetched at that tag rather than
+# vendored: one pin moves the verifier and the schema together, and there is
+# no copy here to drift from the one core was built with.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: 'Schema and ParseChannel rules'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check Out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fetch the channel schema at the pinned core release
+        run: |
+          set -eu
+          ver=$(tr -d '[:space:]' < .github/agent-core-version)
+          curl -fsSL -o "$RUNNER_TEMP/channel-manifest.schema.json" \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY_OWNER}/weaveplatform-agent-core/${ver}/schema/channel-manifest.schema.json"
+          echo "schema from weaveplatform-agent-core ${ver}"
+
+      # check-jsonschema checks `format` (date-time) as well as structure.
+      - name: Validate every channel document
+        run: |
+          set -eu
+          shopt -s nullglob
+          pipx run check-jsonschema==0.38.2 --schemafile "$RUNNER_TEMP/channel-manifest.schema.json" \
+            channels/stable.json channels/pinned/*.json
+
+      - name: ParseChannel rules
+        run: scripts/check-channels.sh parse
+
+  signatures:
+    name: 'Signatures'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check Out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fetch weavemanifest at the pinned core release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/fetch-weavemanifest.sh linux_amd64 "$RUNNER_TEMP"
+
+      - name: Verify every signed channel document
+        run: scripts/check-channels.sh signatures "$RUNNER_TEMP/weavemanifest"
+
+  sequence:
+    name: 'Sequence and pinned immutability'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check Out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # Pull requests only: on a push the base is the commit itself. The job
+      # still runs (and passes) on push so the gate need not tell "skipped"
+      # from "failed".
+      - name: Compare with the base branch
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -eu
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          scripts/check-channels.sh history "origin/${BASE_REF}"
+
+  actionlint:
+    name: 'actionlint and shellcheck'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check Out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A pinned release binary checked against its published sha256; the
+      # runner's shellcheck lints every run: block through it.
+      - name: Install actionlint 1.7.12
+        run: |
+          set -eu
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tgz" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tgz" -C "$RUNNER_TEMP" actionlint
+
+      - name: actionlint
+        run: '"$RUNNER_TEMP/actionlint" -color'
+
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+
+  gate:
+    name: 'Quality gate'
+    if: always()
+    needs: [validate, signatures, sequence, actionlint]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every gate job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = success ] || { echo "a gate job did not succeed"; exit 1; }
+          done

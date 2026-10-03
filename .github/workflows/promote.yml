@@ -12,9 +12,17 @@ name: promote
 # Either way this job updates the rolling channel, signs the result when a
 # signing key is available, and adds it to the one pending promotion PR
 # (branch promote/stable), opening that PR if there is none. A release of
-# several modules dispatches several times; those runs queue (one at a time)
-# and accumulate, so they land as one reviewable change instead of a PR each
+# several modules dispatches several times at once; those runs accumulate on
+# the one branch, so they land as one reviewable change instead of a PR each
 # that conflicts with the rest. Merge is the promotion act.
+#
+# There is deliberately no concurrency group. GitHub keeps one pending run per
+# group and cancels the older pending one when another arrives, so a release
+# dispatching a dozen modules would silently promote two or three of them.
+# Instead every run validates its entry independently, and scripts/promote.sh
+# lands it with a push guarded by --force-with-lease, retrying on a fresh base
+# when a concurrent run pushed first.
+#
 # Nothing here touches channels/pinned/: those are immutable snapshots for
 # self-hosted deployments and are never automated.
 on:
@@ -41,12 +49,6 @@ on:
         required: false
         default: ghcr.io
 
-# One at a time, never cancelled: every run builds on the pending branch the
-# previous one pushed.
-concurrency:
-  group: promote
-  cancel-in-progress: false
-
 permissions:
   contents: write
   pull-requests: write
@@ -62,30 +64,53 @@ jobs:
       IMAGE_JSON: ${{ github.event.client_payload.image && toJSON(github.event.client_payload.image) || inputs.image }}
       REGISTRY: ${{ github.event.client_payload.registry || inputs.registry || 'ghcr.io' }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
+          egress-policy: audit
+
+      # The org's release-please GitHub App (org variable RP_APP_ID, org
+      # secret RP_APP_PRIVATE_KEY), as in weaveplatform-oci's release-please.
+      # Pushes and PRs made with the default GITHUB_TOKEN deliberately trigger
+      # no workflows, so the promotion PR's quality gate would never run and
+      # could never be required; and the org does not let GITHUB_TOKEN open
+      # PRs at all. The App token is minted per run and belongs to the org,
+      # not to whoever created a PAT.
+      #
+      # continue-on-error keeps promotion working where the App is not yet
+      # installed: the next step falls back to RELEASE_PLEASE_PAT and says so,
+      # because a silent fallback is how a repository ends up believing it
+      # uses the App when it never has.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        if: ${{ vars.RP_APP_ID != '' }}
+        continue-on-error: true
+        with:
+          app-id: ${{ vars.RP_APP_ID }}
+          private-key: ${{ secrets.RP_APP_PRIVATE_KEY }}
+
+      - name: Which credential
+        env:
+          HAVE_APP_TOKEN: ${{ steps.app-token.outputs.token != '' }}
+          HAVE_PAT: ${{ secrets.RELEASE_PLEASE_PAT != '' }}
+        run: |
+          if [ "$HAVE_APP_TOKEN" = true ]; then
+            echo "promotion is using the org's release-please App"
+          elif [ "$HAVE_PAT" = true ]; then
+            echo "::warning::App token unavailable (RP_APP_ID/RP_APP_PRIVATE_KEY unset, or the App is not installed here) — falling back to RELEASE_PLEASE_PAT"
+          else
+            echo "::warning::neither the App token nor RELEASE_PLEASE_PAT is available — falling back to GITHUB_TOKEN; the promotion PR's checks will not run, and the PR may not be allowed to open"
+          fi
+
+      # Checked out with the same token so the push in scripts/promote.sh
+      # uses it, and the pushed branch triggers the quality gate.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token || secrets.RELEASE_PLEASE_PAT || github.token }}
           persist-credentials: true
           fetch-depth: 0
 
-      # Build on the pending promotion while its PR is open, so this run's
-      # change joins it rather than racing it. With no open PR, any
-      # promote/stable branch left behind is history (merged or closed), so
-      # start again from main and replace it.
-      - name: Start from the pending promotion
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eu
-          if [ -n "$(gh pr list --head promote/stable --state open --json number --jq '.[0].number // empty')" ]; then
-            git fetch origin promote/stable
-            git checkout -B promote/stable origin/promote/stable
-            echo "PUSH_ARGS=" >> "$GITHUB_ENV"
-          else
-            git checkout -B promote/stable
-            echo "PUSH_ARGS=--force" >> "$GITHUB_ENV"
-          fi
-
-      - uses: oras-project/setup-oras@v2
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
 
       - name: Log in to the registry
         env:
@@ -94,16 +119,6 @@ jobs:
           set -eu
           case "$KIND" in module|image) ;; *) echo "::error::unknown kind '$KIND'"; exit 1 ;; esac
           echo "$GH_TOKEN" | oras login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-
-      # Seed the rolling channel on first use. The seed validates against
-      # weaveplatform-agent-core's schema (core artifacts may be empty).
-      - name: Seed the rolling channel
-        run: |
-          set -eu
-          if [ ! -f channels/stable.json ]; then
-            jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{schema:1, channel:"stable", generated_at:$now, sequence:0,
-              protocol:{min:1,max:1}, core:{version:"", artifacts:[]}, modules:[]}' > channels/stable.json
-          fi
 
       # ---- modules ---------------------------------------------------------
 
@@ -123,33 +138,14 @@ jobs:
           test -f "$RUNNER_TEMP/pub/module.manifest.json"
           jq . "$RUNNER_TEMP/pub/module.manifest.json"
 
-      # channels/stable.json gains or replaces the module's entry; sequence is
-      # the anti-rollback counter core persists, so it only ever goes up.
-      #
-      # `url` is recorded as the OCI reference the artifact was pushed under.
-      # Core fetches artifacts over HTTP today, so serving them — a public
-      # mirror of the OCI store, or attaching binaries to releases — is a
-      # decision still open; until it is made, a merged promotion is a signed
-      # statement of digests, not yet a download.
-      - name: Promote the module
+      # The entry is computed once; scripts/promote.sh applies it to
+      # whichever base it lands on, as many times as the push race needs.
+      - name: Compute the module entry
         if: env.KIND == 'module'
         run: |
           set -eu
-          SIDE="$RUNNER_TEMP/pub/module.manifest.json"
-          STABLE=channels/stable.json
-          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          ENTRY=$(jq --arg ref "$ORAS_REF" '{
-              id, version, protocol, privilege, session,
-              capabilities: (.capabilities // []),
-              subscribes: (.subscribes // []),
-              signing: .signing,
-              artifacts: [ (.artifacts // [])[] | {os, arch, url: ($ref + "#" + .os + "-" + .arch), digest, size} ]
-            } | with_entries(select(.value != null))' "$SIDE")
-          jq --argjson e "$ENTRY" --arg now "$NOW" '
-              .modules = ([.modules[] | select(.id != $e.id)] + [$e] | sort_by(.id))
-              | .sequence += 1
-              | .generated_at = $now' "$STABLE" > "$STABLE.new"
-          mv "$STABLE.new" "$STABLE"
+          scripts/promote.sh module-entry "$RUNNER_TEMP/pub/module.manifest.json" "$ORAS_REF" > "$RUNNER_TEMP/entry.json"
+          jq . "$RUNNER_TEMP/entry.json"
           {
             echo "SUBJECT=${MODULE} ${VERSION}"
             echo "SOURCE=the published sidecar at \`${ORAS_REF}\`"
@@ -213,72 +209,46 @@ jobs:
             echo "SUBJECT=${REPO}:${TAG}"
             echo "SOURCE=\`${REF}\` (re-resolved to \`${WANT}\`)"
           } >> "$GITHUB_ENV"
-
-      # Same rule as pkg/channel.Promote in weaveplatform-oci: an entry is
-      # replaced by repository and tag, entries sort by repository then tag,
-      # and sequence only ever goes up.
-      - name: Promote the image
-        if: env.KIND == 'image'
-        run: |
-          set -eu
-          STABLE=channels/stable.json
-          jq --slurpfile e "$RUNNER_TEMP/image.json" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
-              $e[0] as $e
-              | .images = ([(.images // [])[] | select(.repository != $e.repository or .tag != $e.tag)] + [$e]
-                           | sort_by(.repository, .tag))
-              | .sequence += 1
-              | .generated_at = $now' "$STABLE" > "$STABLE.new"
-          mv "$STABLE.new" "$STABLE"
+          cp "$RUNNER_TEMP/image.json" "$RUNNER_TEMP/entry.json"
 
       # ---- both ------------------------------------------------------------
 
-      # weavemanifest ships in the agent release; this repository never
-      # carries a copy of the signing code. Signing is skipped, loudly, when
-      # no signing key is provisioned — the PR then carries an unsigned
-      # document that core will refuse, which is the correct failure.
-      - name: Sign
+      # weavemanifest ships in the agent release (the version pinned in
+      # .github/agent-core-version); this repository never carries a copy of
+      # the signing code. Signing is skipped, loudly, when no signing key is
+      # provisioned — the PR then carries an unsigned document that core will
+      # refuse, which is the correct failure.
+      - name: Prepare signing
         env:
           SIGNING_KEY: ${{ secrets.CHANNEL_SIGNING_KEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          jq . channels/stable.json
           if [ -z "$SIGNING_KEY" ]; then
             echo "::warning::CHANNEL_SIGNING_KEY is not set — channels/stable.json is NOT signed"
             exit 0
           fi
-          gh release download -R "${GITHUB_REPOSITORY_OWNER}/weaveplatform-agent-core" \
-            --pattern 'weaveplatform-agent_*_linux_arm64.tar.gz' -O "$RUNNER_TEMP/agent.tgz"
-          tar -xzf "$RUNNER_TEMP/agent.tgz" -C "$RUNNER_TEMP" weavemanifest
+          scripts/fetch-weavemanifest.sh linux_arm64 "$RUNNER_TEMP"
+          umask 077
           printf '%s' "$SIGNING_KEY" > "$RUNNER_TEMP/signing.key"
-          "$RUNNER_TEMP/weavemanifest" sign "$RUNNER_TEMP/signing.key" channels/stable.json
-          rm -f "$RUNNER_TEMP/signing.key"
+          {
+            echo "WEAVEMANIFEST=$RUNNER_TEMP/weavemanifest"
+            echo "SIGNING_KEY_FILE=$RUNNER_TEMP/signing.key"
+          } >> "$GITHUB_ENV"
 
-      # Titles follow this repository's conventional-commit PR title rule. The
-      # body lists every item the pending promotion carries, one line each.
-      - name: Open or extend the promotion PR
+      # Applies the entry to the pending branch (or main), re-signs, pushes
+      # with a lease and retries on a lost race, then opens or extends the one
+      # PR. Its title follows this repository's conventional-commit PR title
+      # rule; its body lists every item the branch carries, one line each.
+      - name: Land on the pending promotion
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PLEASE_PAT || github.token }}
         run: |
           set -eu
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add channels/stable.json
-          if [ -f channels/stable.json.sig ]; then git add channels/stable.json.sig; fi
-          if git diff --cached --quiet; then
-            echo "::notice::${SUBJECT} is already in the pending promotion"
-            exit 0
-          fi
-          git commit -m "chore(promote): ${SUBJECT} to stable"
-          # shellcheck disable=SC2086 # PUSH_ARGS is empty or one flag
-          git push $PUSH_ARGS origin promote/stable
-          LINE="- ${SUBJECT}, assembled from ${SOURCE}"
-          PR=$(gh pr list --head promote/stable --state open --json number --jq '.[0].number // empty')
-          if [ -z "$PR" ]; then
-            gh pr create --head promote/stable --title "chore(promote): promote to stable" \
-              --body "$(printf 'Merging is the promotion act. This promotion carries:\n\n%s\n' "$LINE")"
-          else
-            gh pr view "$PR" --json body --jq .body > "$RUNNER_TEMP/body.md"
-            printf '%s\n' "$LINE" >> "$RUNNER_TEMP/body.md"
-            gh pr edit "$PR" --body-file "$RUNNER_TEMP/body.md"
-          fi
+          scripts/promote.sh land "$KIND" "$RUNNER_TEMP/entry.json"
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/signing.key"
