@@ -1,5 +1,13 @@
 # Security Policy
 
-If you discover a security issue in this repo, please submit it through the [GitHub Security Bug Bounty](<https://hackerone.com/github>)
+Channel documents decide which module and image versions devices install, so a
+flaw here can reach every device that follows a channel.
 
-Thanks for helping make GitHub safe for everyone.
+## Reporting a vulnerability
+
+Report it privately through
+[GitHub private vulnerability reporting](https://github.com/weaveplatform/weaveplatform-channels/security/advisories/new).
+Do not open a public issue.
+
+Useful details: the affected channel file or workflow, how to reproduce it, and
+the impact (for example, an unsigned or rolled-back document being accepted).

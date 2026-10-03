@@ -31,11 +31,10 @@ Describe what actually happened.
 
 ### Environment
 
-- **OS**: [e.g., Windows, macOS, Linux]
-- **Browser**: [if applicable, include browser name and version]
-- **Terraform Version**: [if applicable]
-- **Provider Version**: [if applicable]
-- **Other dependencies**: [e.g., specific libraries, versions, etc.]
+- **Channel**: [e.g., stable, a pinned channel file]
+- **Sequence**: [the `sequence` of the affected document]
+- **Workflow run**: [link, if a promotion or the quality gate is involved]
+- **Agent-core version**: [if a device refused or misread the document]
 
 ### Additional Context
 
