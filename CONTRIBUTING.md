@@ -59,6 +59,6 @@ scripts/fetch-weavemanifest.sh darwin_arm64 /tmp/wm && scripts/check-channels.sh
 ## Issues
 
 File bugs and requests in the
-[GitHub issues](https://github.com/weaveplatform/weaveplatform-channels/issues)
+[GitHub issues](https://github.com/weaveplatform/weaveplatform-release-channels/issues)
 page using the templates. Report security issues as described in
 [SECURITY.md](SECURITY.md), not in a public issue.

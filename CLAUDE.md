@@ -1,4 +1,4 @@
-# weaveplatform-channels — engineering conventions
+# weaveplatform-release-channels — engineering conventions
 
 This repo holds the signed channel manifests and the keys that sign them; the
 tool that mints and verifies the chain lives in weaveplatform-agent-core. Comments about a security
