@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "generated_at": "2026-10-04T13:46:41Z",
-  "sequence": 41,
+  "generated_at": "2026-10-04T13:46:47Z",
+  "sequence": 42,
   "protocol": {
     "min": 1,
     "max": 1
@@ -230,7 +230,7 @@
     },
     {
       "id": "weave-macos-clipboard",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "protocol": 1,
       "privilege": "user",
       "session": "per-user-console",
@@ -242,9 +242,9 @@
         {
           "os": "darwin",
           "arch": "arm64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-clipboard:0.2.0#darwin-arm64",
-          "digest": "sha256:2d808a388fd60d506f36a92da445329ab45037c16059221862f4250c0dcb5c83",
-          "size": 18021634
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-clipboard:0.2.1#darwin-arm64",
+          "digest": "sha256:c94865ee2786783c2873dade78b8fd5ea9cf0958c9ca79bfe3bbfcb134632111",
+          "size": 18125490
         }
       ]
     },
