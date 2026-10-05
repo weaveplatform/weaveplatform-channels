@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "generated_at": "2026-10-05T07:36:32Z",
-  "sequence": 44,
+  "generated_at": "2026-10-05T07:36:55Z",
+  "sequence": 45,
   "protocol": {
     "min": 1,
     "max": 1
@@ -293,7 +293,7 @@
     },
     {
       "id": "weave-macos-metrics",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "protocol": 1,
       "privilege": "service",
       "session": "system",
@@ -301,13 +301,16 @@
         "hypervisor.channel"
       ],
       "subscribes": [],
+      "signing": {
+        "apple_team_id": "5GM6DW5337"
+      },
       "artifacts": [
         {
           "os": "darwin",
           "arch": "arm64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-metrics:0.2.0#darwin-arm64",
-          "digest": "sha256:11d7ad5b83d9b988f43c0291ba479f0b2a18c7b8d9171f76d35c4ed66794f28a",
-          "size": 17405458
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-metrics:0.2.1#darwin-arm64",
+          "digest": "sha256:1ed4ecc995ce8c15b5f4338c3b75d52376d31b76e50809190305f2b0313474a4",
+          "size": 17391280
         }
       ]
     },
