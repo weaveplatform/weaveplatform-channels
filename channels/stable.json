@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "generated_at": "2026-10-05T07:39:17Z",
-  "sequence": 48,
+  "generated_at": "2026-10-05T07:41:02Z",
+  "sequence": 49,
   "protocol": {
     "min": 1,
     "max": 1
@@ -230,7 +230,7 @@
     },
     {
       "id": "weave-macos-clipboard",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "protocol": 1,
       "privilege": "user",
       "session": "per-user-console",
@@ -238,13 +238,16 @@
         "hypervisor.channel"
       ],
       "subscribes": [],
+      "signing": {
+        "apple_team_id": "5GM6DW5337"
+      },
       "artifacts": [
         {
           "os": "darwin",
           "arch": "arm64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-clipboard:0.2.1#darwin-arm64",
-          "digest": "sha256:c94865ee2786783c2873dade78b8fd5ea9cf0958c9ca79bfe3bbfcb134632111",
-          "size": 18125490
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-clipboard:0.2.2#darwin-arm64",
+          "digest": "sha256:80cf2f99dde5623df33c8a51082fad20cb9ff805a7c11a1b78106f7c53936a59",
+          "size": 18038464
         }
       ]
     },
