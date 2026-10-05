@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "generated_at": "2026-10-04T13:46:53Z",
-  "sequence": 43,
+  "generated_at": "2026-10-05T07:36:32Z",
+  "sequence": 44,
   "protocol": {
     "min": 1,
     "max": 1
@@ -270,7 +270,7 @@
     },
     {
       "id": "weave-macos-exec",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "protocol": 1,
       "privilege": "system",
       "session": "system",
@@ -278,13 +278,16 @@
         "hypervisor.channel"
       ],
       "subscribes": [],
+      "signing": {
+        "apple_team_id": "5GM6DW5337"
+      },
       "artifacts": [
         {
           "os": "darwin",
           "arch": "arm64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-exec:0.2.0#darwin-arm64",
-          "digest": "sha256:919a7353677c908205073cafe80f73bece6edb50c84ced5b92ae9a4f5fe48dfb",
-          "size": 16838018
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-exec:0.2.1#darwin-arm64",
+          "digest": "sha256:70de31642084bb349f7dbbe8c758db04d47dc4fde1328caa30c85979ec29c0ae",
+          "size": 16827152
         }
       ]
     },
