@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "generated_at": "2026-10-05T17:12:21Z",
-  "sequence": 59,
+  "generated_at": "2026-10-06T04:11:19Z",
+  "sequence": 61,
   "protocol": {
     "min": 1,
     "max": 1
@@ -414,6 +414,37 @@
     },
     {
       "id": "weave-windows-clipboard",
+      "version": "0.2.3",
+      "protocol": 1,
+      "privilege": "user",
+      "session": "per-user-console",
+      "capabilities": [
+        "hypervisor.channel"
+      ],
+      "subscribes": [],
+      "signing": {
+        "authenticode_subject": "weaveplatform code signing",
+        "authenticode_thumbprint": "A6A3936288B9409ED7A3458CF81014A77AB59B51"
+      },
+      "artifacts": [
+        {
+          "os": "windows",
+          "arch": "amd64",
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-windows-clipboard:0.2.3#windows-amd64",
+          "digest": "sha256:7600b5cb09459147928249d545d756df904c0866bb67ea2bc817b4b00ebcd5a5",
+          "size": 20001560
+        },
+        {
+          "os": "windows",
+          "arch": "arm64",
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-windows-clipboard:0.2.3#windows-arm64",
+          "digest": "sha256:c074b7c14d0c8e009b307b72256a3dcde6116bccaef28062b81b8fc7d40fcd2b",
+          "size": 18746136
+        }
+      ]
+    },
+    {
+      "id": "weave-windows-display",
       "version": "0.2.2",
       "protocol": 1,
       "privilege": "user",
@@ -430,47 +461,16 @@
         {
           "os": "windows",
           "arch": "amd64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-windows-clipboard:0.2.2#windows-amd64",
-          "digest": "sha256:ae8652aedf67bb9fe0f1c61b767e2c247b1a793fe5b743cb0498e59b63ecbb2e",
-          "size": 19992344
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-windows-display:0.2.2#windows-amd64",
+          "digest": "sha256:64ba73b555f530d0af066df4a910f1938b148c418d3f71bc3cfc7994558af06d",
+          "size": 18387224
         },
         {
           "os": "windows",
           "arch": "arm64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-windows-clipboard:0.2.2#windows-arm64",
-          "digest": "sha256:e3763792e4977e00398b1046702672197fbe8dcc06b0e023b812e526de865abe",
-          "size": 18739992
-        }
-      ]
-    },
-    {
-      "id": "weave-windows-display",
-      "version": "0.2.1",
-      "protocol": 1,
-      "privilege": "user",
-      "session": "per-user-console",
-      "capabilities": [
-        "hypervisor.channel"
-      ],
-      "subscribes": [],
-      "signing": {
-        "authenticode_subject": "weaveplatform code signing",
-        "authenticode_thumbprint": "A6A3936288B9409ED7A3458CF81014A77AB59B51"
-      },
-      "artifacts": [
-        {
-          "os": "windows",
-          "arch": "amd64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-windows-display:0.2.1#windows-amd64",
-          "digest": "sha256:97aa64939f582d6e4fd3782322adf71b4274e669342ed2809f34ccff06b884fa",
-          "size": 18381592
-        },
-        {
-          "os": "windows",
-          "arch": "arm64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-windows-display:0.2.1#windows-arm64",
-          "digest": "sha256:1ecf6e3863d146b7276773403ece4b85301581ca99a9879d63581415aa96a61e",
-          "size": 17116440
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-windows-display:0.2.2#windows-arm64",
+          "digest": "sha256:0711bcab05625a1441a89055917e890c397eb020b98ec45c4662d2cc18f03997",
+          "size": 17123608
         }
       ]
     },
