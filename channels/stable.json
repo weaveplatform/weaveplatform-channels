@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "generated_at": "2026-10-06T09:58:24Z",
-  "sequence": 70,
+  "generated_at": "2026-10-06T09:59:55Z",
+  "sequence": 71,
   "protocol": {
     "min": 1,
     "max": 1
@@ -368,7 +368,7 @@
     },
     {
       "id": "weave-macos-session",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "protocol": 1,
       "privilege": "service",
       "session": "system",
@@ -383,9 +383,9 @@
         {
           "os": "darwin",
           "arch": "arm64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-session:0.2.1#darwin-arm64",
-          "digest": "sha256:d0393e99916c3579c732c9aa076695752fee0c44e1d7b6d33ce9861d79ab1884",
-          "size": 17352304
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-macos-session:0.2.2#darwin-arm64",
+          "digest": "sha256:189ccd6d97e6c8d2bf0f833d9a72257c0707f45c8a2bbef6213b46b395fb7a7d",
+          "size": 17352384
         }
       ]
     },
