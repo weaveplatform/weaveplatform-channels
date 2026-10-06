@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "generated_at": "2026-10-06T13:07:03Z",
-  "sequence": 77,
+  "generated_at": "2026-10-06T13:15:50Z",
+  "sequence": 78,
   "protocol": {
     "min": 1,
     "max": 1
@@ -14,7 +14,7 @@
   "modules": [
     {
       "id": "weave-linux-clipboard",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "protocol": 1,
       "privilege": "user",
       "session": "per-user-console",
@@ -26,16 +26,16 @@
         {
           "os": "linux",
           "arch": "amd64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-clipboard:0.2.3#linux-amd64",
-          "digest": "sha256:8a0a8be840d6caf3586ca29edd9f6a2ab11b046520363122bf4be625049bdfbf",
-          "size": 18239483
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-clipboard:0.2.4#linux-amd64",
+          "digest": "sha256:b9db4e26a8d1c9f6e2ead8a29deca93a92e74472c6c2b7e60b0e93fc1053eda3",
+          "size": 18326659
         },
         {
           "os": "linux",
           "arch": "arm64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-clipboard:0.2.3#linux-arm64",
-          "digest": "sha256:313c660ec8e648157177be7ae92fed277cb729c79b5243f17bd168325dfa7a8d",
-          "size": 17208296
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-clipboard:0.2.4#linux-arm64",
+          "digest": "sha256:b434bc3f9a1cedadebd98ea305b190e21f7b8e379c44ae07753259f94d389bbf",
+          "size": 17236752
         }
       ]
     },
