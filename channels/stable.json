@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "channel": "stable",
-  "generated_at": "2026-10-10T04:06:07Z",
-  "sequence": 85,
+  "generated_at": "2026-10-10T04:06:31Z",
+  "sequence": 86,
   "protocol": {
     "min": 1,
     "max": 1
@@ -203,7 +203,7 @@
     },
     {
       "id": "weave-linux-time",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "protocol": 1,
       "privilege": "system",
       "session": "system",
@@ -215,16 +215,16 @@
         {
           "os": "linux",
           "arch": "amd64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-time:0.2.0#linux-amd64",
-          "digest": "sha256:7ff06d2e80a4c48fb9eaa942e3f997bebb2adc87a1baee4cca5ce85e45850b8d",
-          "size": 17089229
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-time:0.2.1#linux-amd64",
+          "digest": "sha256:fae3d0de826ee5f3a1d583afb5066174e3a7b899a340ffc5b26f5b450df57d15",
+          "size": 17179106
         },
         {
           "os": "linux",
           "arch": "arm64",
-          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-time:0.2.0#linux-arm64",
-          "digest": "sha256:31b81adc69e341aac21af6bd1daeb872f9bcb74bb544f7bda9a7800b82773e0f",
-          "size": 16148426
+          "url": "ghcr.io/weaveplatform/weaveplatform-modules/weave-linux-time:0.2.1#linux-arm64",
+          "digest": "sha256:ea9bd951b6f5bb56c56e0ca510ba3ebeb352ee4c8aa15e3e94b347acb4f7ca55",
+          "size": 16179399
         }
       ]
     },
